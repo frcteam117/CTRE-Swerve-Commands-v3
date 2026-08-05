@@ -22,6 +22,8 @@ import org.wpilib.smartdashboard.SmartDashboard;
 import com.pathplanner.lib.auto.AutoBuilder;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
+
+import first.robot.commands.DriveCommands;
 import first.robot.generated.TunerConstants;
 import first.robot.subsystems.drive.Drive;
 import first.robot.subsystems.drive.ModuleIO;
@@ -70,11 +72,21 @@ public class RobotContainer {
     // Grab the hatch when the Circle button is pressed.
     // While holding R1, drive at half speed
     drive.setDefaultCommand(
-        drive.joystickDriveCommand(
+        DriveCommands.joystickDriveCommand(
             drive,
             () -> -controller.getLeftY(),
             () -> -controller.getLeftX(),
             () -> -controller.getRightX()));
+
+    controller
+        .triangle()
+        .whileTrue(
+            DriveCommands.joystickDriveAtAngleSequence(
+                drive,
+                () -> -controller.getLeftY(),
+                () -> -controller.getLeftX(),
+                () -> -controller.getRightY(),
+                () -> -controller.getRightX()));
     
     // driverController
     //     .rightBumper()

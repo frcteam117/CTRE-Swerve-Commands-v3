@@ -20,6 +20,7 @@ import com.pathplanner.lib.util.PathPlannerLogging;
 // import org.wpilib.hardware.hal.FRCNetComm.tResourceType;
 import org.wpilib.hardware.hal.HAL;
 import org.wpilib.math.linalg.Matrix;
+import org.wpilib.math.controller.ProfiledPIDController;
 import org.wpilib.math.estimator.SwerveDrivePoseEstimator;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
@@ -33,6 +34,7 @@ import org.wpilib.math.kinematics.SwerveModuleVelocity;
 import org.wpilib.math.numbers.N1;
 import org.wpilib.math.numbers.N3;
 import org.wpilib.math.system.DCMotor;
+import org.wpilib.math.trajectory.TrapezoidProfile;
 import org.wpilib.math.util.MathUtil;
 // import org.wpilib.util.Alert.*;
 // import org.wpilib.util.Alert.AlertType;
@@ -47,6 +49,9 @@ import first.robot.Constants.Mode;
 import first.robot.generated.TunerConstants;
 import first.robot.util.LocalADStarAK;
 import first.robot.util.TunableDouble;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.DoubleSupplier;
@@ -184,6 +189,17 @@ public class Drive extends Mechanism {
       for (var module : modules) {
         module.stop();
       }
+    }
+
+    // Log current commands requiring Drive mechanism
+    // clearing the running commands (in case fewer are running now than last loop)
+    List<Command> runningCommands = this.getRunningCommands();
+    for (int i = 0; i < 4; i++) {
+      Logger.recordOutput("Drive/RunningCommand_"+i,"N/A");
+    }
+
+    for (Command cmd : runningCommands) {
+      Logger.recordOutput("Drive/RunningCommand_"+runningCommands.indexOf(cmd),cmd.name());
     }
 
     // Log empty setpoint states when disabled
@@ -409,45 +425,12 @@ public class Drive extends Mechanism {
         .getTranslation();
   }
 
-public static void joystickDrive(
-      Drive drive,
-      DoubleSupplier xSupplier,
-      DoubleSupplier ySupplier,
-      DoubleSupplier omegaSupplier) {
-    
-          // Get linear velocity
-          Translation2d linearVelocity =
-              getLinearVelocityFromJoysticks(xSupplier.getAsDouble(), ySupplier.getAsDouble());
-
-          // Apply rotation deadband
-          double omega = MathUtil.applyDeadband(omegaSupplier.getAsDouble(), DEADBAND);
-
-          // Square rotation value for more precise control
-          omega = Math.copySign(omega * omega, omega);
-
-          // Convert to field relative speeds & send command
-          ChassisVelocities speeds =
-              new ChassisVelocities(
-                  linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
-                  linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
-                  omega * drive.getMaxAngularSpeedRadPerSec());
-          boolean isFlipped =
-              MatchState.getAlliance().isPresent()
-                  && MatchState.getAlliance().get() == Alliance.RED;
-          drive.runVelocity(
-              speeds.toRobotRelative(
-                  isFlipped
-                      ? drive.getRotation().plus(new Rotation2d(Math.PI))
-                      : drive.getRotation())
-              );
-
+  public Command resetAngleController(ProfiledPIDController angleController) {
+    return this.run(coroutine -> {
+        angleController.reset(getRotation().getRadians());
+    })
+    .named("resetAngleController");
   }
   
-  public Command joystickDriveCommand(Drive drive,
-      DoubleSupplier xSupplier,
-      DoubleSupplier ySupplier,
-      DoubleSupplier omegaSupplier) {
-        // implicitly require `this`
-        return this.runRepeatedly(() -> joystickDrive(drive,xSupplier,ySupplier,omegaSupplier)).named("joystickDriveCommand");
-    }
+  
 }
