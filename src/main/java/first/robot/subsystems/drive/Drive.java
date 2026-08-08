@@ -36,6 +36,7 @@ import org.wpilib.math.numbers.N3;
 import org.wpilib.math.system.DCMotor;
 import org.wpilib.math.trajectory.TrapezoidProfile;
 import org.wpilib.math.util.MathUtil;
+import org.wpilib.system.Timer;
 // import org.wpilib.util.Alert.*;
 // import org.wpilib.util.Alert.AlertType;
 import org.wpilib.driverstation.DriverStation;
@@ -50,6 +51,8 @@ import first.robot.generated.TunerConstants;
 import first.robot.util.LocalADStarAK;
 import first.robot.util.TunableDouble;
 
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.Lock;
@@ -431,6 +434,74 @@ public class Drive extends Mechanism {
     })
     .named("resetAngleController");
   }
+
+  public Command clearSamples(
+    List<Double> velocitySamples,
+    List<Double> voltageSamples) {
+    return this.run(coroutine -> {
+      velocitySamples.clear();
+      voltageSamples.clear();
+    })
+    .named("clearSamples");
+  }
+  public Command orientModulesForFF(Drive drive) {
+    return this.run(
+                coroutine -> {
+                  while (true) {
+                    drive.runCharacterization(0.0);
+                    coroutine.yield();
+                  }
+                })
+            .named("orientModulesForFF");
+  }
+
+  public Command restartTimer(Timer timer) {
+    return this.run(coroutine -> {
+        timer.restart();
+      }
+    ).named("restartTimer");
+  }
+
+  // runs until is interrupted, like disabling the robot or overriding the command
+  public Command gatherAndCalcFFData(Drive drive, Timer timer, 
+    List<Double> velocitySamples,
+    List<Double> voltageSamples
+  ) {
+    return this.run(
+                (coroutine) -> {
+                  // loop until command is cancelled, then run the code in finally{}
+                  try {
+                    while (true) {
+                      double voltage = timer.get() * FF_RAMP_RATE;
+                      drive.runCharacterization(voltage);
+                      velocitySamples.add(drive.getFFCharacterizationVelocity());
+                      voltageSamples.add(voltage);
+                      coroutine.yield();
+                    }
+                  }
+                  finally {
+                    int n = velocitySamples.size();
+                    double sumX = 0.0;
+                    double sumY = 0.0;
+                    double sumXY = 0.0;
+                    double sumX2 = 0.0;
+                    for (int i = 0; i < n; i++) {
+                      sumX += velocitySamples.get(i);
+                      sumY += voltageSamples.get(i);
+                      sumXY += velocitySamples.get(i) * voltageSamples.get(i);
+                      sumX2 += velocitySamples.get(i) * velocitySamples.get(i);
+                    }
+                    double kS = (sumY * sumX2 - sumX * sumXY) / (n * sumX2 - sumX * sumX);
+                    double kV = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+
+                    NumberFormat formatter = new DecimalFormat("#0.00000");
+                    System.out.println("********** Drive FF Characterization Results **********");
+                    System.out.println("\tkS: " + formatter.format(kS));
+                    System.out.println("\tkV: " + formatter.format(kV));
+                  }
+                })
+                .named("gatherFFData");
+    }
   
   
 }
